@@ -27,6 +27,7 @@ namespace MetadataExtractor.Formats.QuickTime
         {
             var directories = new List<Directory>();
             var metaDataKeys = new List<string>();
+            var supportedAtomValueTypes = new List<int> { 1, 13, 14, 23, 27 };
 
             QuickTimeReader.ProcessAtoms(stream, Handler);
 
@@ -159,17 +160,32 @@ namespace MetadataExtractor.Formats.QuickTime
                             var key = metaDataKeys[(int)atomType - 1];
 
                             // Value Atom
-                            var typeIndicator = a.Reader.GetBytes(4);
-                            var localeIndicator = a.Reader.GetBytes(4);
+                            var typeIndicator = a.Reader.GetUInt32();
+                            if (!supportedAtomValueTypes.Contains((int) typeIndicator))
+                            {
+                                directory.AddError("Unsupported Metadata Type Indicator: " + typeIndicator);
+                                break;
+                            }
+
+                            // Currently only the Default Country/Locale is supported
+                            var localeIndicator = a.Reader.GetUInt32();
+                            if (localeIndicator != 0)
+                            {
+                                directory.AddError("Unsupported Metadata Locale Indicator: " + localeIndicator);
+                                break;
+                            }
 
                             // Data Atom
-                            var dataTypeIndicator = a.Reader.GetBytes(4);
-                            var dataLocaleIndicator = a.Reader.GetBytes(4);
+                            var dataTypeIndicator = a.Reader.GetUInt32();
+                            var dataLocaleIndicator = a.Reader.GetUInt32();
                             var data = a.Reader.GetBytes((int)atomSize - 24);
-                            var dataStr = Encoding.UTF8.GetString(data);
                             if (directory.TryGetTag(key, out int tag))
                             {
-                                directory.Set(tag, dataStr);
+                                DecodeData(data, (int) dataTypeIndicator, tag, directory);
+                            }
+                            else
+                            {
+                                directory.AddError($"No Tag for Key {key} found in ilist");
                             }
                         }
                         directories.Add(directory);
@@ -284,6 +300,43 @@ namespace MetadataExtractor.Formats.QuickTime
                     }
                 }
             }
+        }
+
+        private static void DecodeData(byte[] data, int dataTypeIndicator, int tag, QuickTimeMetadataHeaderDirectory directory)
+        {
+            switch (dataTypeIndicator)
+            {
+                case 1:
+                    {
+                        // UTF-8
+                        break;
+                    }
+                case 13:
+                    {
+                        // JPEG
+                        break;
+                    }
+                case 14:
+                    {
+                        //PNG
+                        break;
+                    }
+                case 27:
+                    {
+                        // BMP
+                        break;
+                    }
+                case 23:
+                    {
+                        // BE Float32 (used for User Rating)
+                        break;
+                    }
+            }
+            var dataStr = Encoding.UTF8.GetString(data);
+
+            directory.Set(tag,
+
+            Directory.AddError("");
         }
     }
 }
